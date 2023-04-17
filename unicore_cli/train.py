@@ -53,6 +53,7 @@ def main(args) -> None:
 
     utils.import_user_module(args)
     utils.set_jit_fusion_options()
+    args.group_id = args.run_id
     args.run_id = args.run_id + '_' + str(unique_code())
 
     assert (

@@ -22,11 +22,19 @@ import torch
 
 from .meters import AverageMeter, StopwatchMeter, TimeMeter
 
+import datetime
+import base64
 
 logger = logging.getLogger(__name__)
 
 
-
+def unique_code():
+    now = datetime.datetime.now()
+    code = now.strftime("%y%m%d%H%M%S")
+    code_bytes = code.encode('ascii')
+    base64_bytes = base64.b64encode(code_bytes)
+    base64_code = base64_bytes.decode('ascii')
+    return base64_code
 
 def progress_bar(
     iterator,
@@ -397,7 +405,7 @@ class WandbProgressBarWrapper(BaseProgressBar):
             import wandb
         except ImportError:
             "wandb not found, use pip install wandb"
-        self.writer = wandb.init(project=configs.experiment_name, config=configs)
+        self.writer = wandb.init(project=configs.experiment_name, config=configs, group=configs.group_id)
         if self.configs.run_id:
             self.writer.name = self.configs.run_id
 
@@ -449,6 +457,8 @@ class TrackingProgressBarWrapper(BaseProgressBar):
         else:
             repo = configs.tracking_repo
         self.writer = Run(repo=repo, experiment=configs.experiment_name)
+        # using tag as group, maybe context?
+        self.writer.add_tag(self.configs.group_id)
         if self.configs.run_id:
             self.writer.name = self.configs.run_id
         self.writer["hparams"] = configs
