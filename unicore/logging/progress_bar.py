@@ -26,16 +26,7 @@ from .meters import AverageMeter, StopwatchMeter, TimeMeter
 logger = logging.getLogger(__name__)
 
 
-import datetime
-import base64
 
-def unique_code():
-    now = datetime.datetime.now()
-    code = now.strftime("%y%m%d%H%M%S")
-    code_bytes = code.encode('ascii')
-    base64_bytes = base64.b64encode(code_bytes)
-    base64_code = base64_bytes.decode('ascii')
-    return base64_code
 
 def progress_bar(
     iterator,
@@ -45,8 +36,11 @@ def progress_bar(
     prefix: Optional[str] = None,
     tensorboard_logdir: Optional[str] = None,
     default_log_format: str = "tqdm",
-    configs = None
+    configs = None,
+    running_state = 'train'
 ):
+    configs.running_state = running_state
+        
     if log_format is None:
         log_format = default_log_format
     if log_format == "tqdm" and not sys.stderr.isatty():
@@ -62,11 +56,15 @@ def progress_bar(
         bar = TqdmProgressBar(iterator, epoch, prefix)
     elif log_format == "wandb":
         bar = SimpleProgressBar(iterator, epoch, prefix, log_interval)  
+    elif log_format == "tracking":
+        bar = SimpleProgressBar(iterator, epoch, prefix, log_interval)  
     else:
         raise ValueError("Unknown log format: {}".format(log_format))
 
     if log_format == 'wandb':
         return WandbProgressBarWrapper(bar, configs)
+    elif log_format == 'tracking':
+        return TrackingProgressBarWrapper(bar, configs)
         
     if tensorboard_logdir:
         try:
@@ -394,14 +392,14 @@ class WandbProgressBarWrapper(BaseProgressBar):
     def __init__(self, wrapped_bar, configs):
         self.wrapped_bar = wrapped_bar
         self.configs = configs
+        self.running_state = configs.running_state
         try:
             import wandb
         except ImportError:
             "wandb not found, use pip install wandb"
         self.writer = wandb.init(project=configs.experiment_name, config=configs)
         if self.configs.run_id:
-            run_id = self.configs.run_id + '_' + str(unique_code())
-            self.writer.name = run_id
+            self.writer.name = self.configs.run_id
 
     def __iter__(self):
         return iter(self.wrapped_bar)
@@ -413,7 +411,7 @@ class WandbProgressBarWrapper(BaseProgressBar):
 
     def print(self, stats, tag=None, step=None):
         """Print end-of-epoch stats."""
-        self._log_to_tensorboard(stats, tag, step)
+        self._log_to_wandb(stats, tag, step)
         self.wrapped_bar.print(stats, tag=tag, step=step)
 
     def update_config(self, config):
@@ -429,11 +427,11 @@ class WandbProgressBarWrapper(BaseProgressBar):
             step = stats["num_updates"]
         for key in stats.keys() - {"num_updates"}:
             if isinstance(stats[key], AverageMeter):
-                writer.log({key: stats[key].val}, step)
+                writer.log({self.running_state + '_' + key: stats[key].val}, step)
             elif isinstance(stats[key], Number):
-                writer.log({key: stats[key]}, step)
+                writer.log({self.running_state + '_' + key: stats[key]}, step)
             elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
-                writer.log({key: stats[key].item()}, step)
+                writer.log({self.running_state + '_' + key: stats[key].item()}, step)
 
 class TrackingProgressBarWrapper(BaseProgressBar):
     """Log to Wandb."""
@@ -441,6 +439,7 @@ class TrackingProgressBarWrapper(BaseProgressBar):
     def __init__(self, wrapped_bar, configs):
         self.wrapped_bar = wrapped_bar
         self.configs = configs
+        self.running_state = configs.running_state
         try:
             from dp.tracking import Run
         except ImportError:
@@ -451,8 +450,7 @@ class TrackingProgressBarWrapper(BaseProgressBar):
             repo = configs.tracking_repo
         self.writer = Run(repo=repo, experiment=configs.experiment_name)
         if self.configs.run_id:
-            run_id = self.configs.run_id + '_' + str(unique_code())
-            self.writer.name = run_id
+            self.writer.name = self.configs.run_id
         self.writer["hparams"] = configs
         
     def __iter__(self):
@@ -482,8 +480,8 @@ class TrackingProgressBarWrapper(BaseProgressBar):
             step = stats["num_updates"]
         for key in stats.keys() - {"num_updates"}:
             if isinstance(stats[key], AverageMeter):
-                writer.log(stats[key].val, name=key, step=step)
+                writer.log(stats[key].val, name=self.running_state + '_' + key, step=step)
             elif isinstance(stats[key], Number):
-                writer.log(stats[key], name=key, step=step)
+                writer.log(stats[key], name=self.running_state + '_' + key, step=step)
             elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
-                writer.log(stats[key].item(), name=key, step=step)
+                writer.log(stats[key].item(), name=self.running_state + '_' + key, step=step)

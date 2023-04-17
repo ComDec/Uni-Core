@@ -15,6 +15,8 @@ import os
 import sys
 from typing import Dict, Optional, Any, List, Tuple, Callable
 
+import datetime
+import base64
 import numpy as np
 import torch
 from unicore import (
@@ -39,10 +41,19 @@ logging.basicConfig(
 logger = logging.getLogger("unicore_cli.train")
 
 
+def unique_code():
+    now = datetime.datetime.now()
+    code = now.strftime("%y%m%d%H%M%S")
+    code_bytes = code.encode('ascii')
+    base64_bytes = base64.b64encode(code_bytes)
+    base64_code = base64_bytes.decode('ascii')
+    return base64_code
+
 def main(args) -> None:
 
     utils.import_user_module(args)
     utils.set_jit_fusion_options()
+    args.run_id = args.run_id + '_' + str(unique_code())
 
     assert (
         args.batch_size is not None
@@ -357,6 +368,9 @@ def validate(
                     else None
                 ),
                 default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
+                configs=args,
+                running_state = 'valid'
+                
             )
 
             # create a new root metrics aggregator so validation metrics
