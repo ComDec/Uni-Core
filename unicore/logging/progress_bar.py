@@ -399,6 +399,9 @@ class WandbProgressBarWrapper(BaseProgressBar):
         except ImportError:
             "wandb not found, use pip install wandb"
         self.writer = wandb.init(project=configs.experiment_name, config=configs)
+        if self.configs.run_id:
+            run_id = self.configs.run_id + '_' + str(unique_code())
+            self.writer.name = run_id
 
     def __iter__(self):
         return iter(self.wrapped_bar)
@@ -420,9 +423,6 @@ class WandbProgressBarWrapper(BaseProgressBar):
 
     def _log_to_wandb(self, stats, tag=None, step=None):
         writer = self.writer
-        if self.configs.run_id:
-            run_id = self.configs.run_id + str(unique_code())
-            writer.name = run_id
         if writer is None:
             return
         if step is None:
@@ -434,3 +434,56 @@ class WandbProgressBarWrapper(BaseProgressBar):
                 writer.log({key: stats[key]}, step)
             elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
                 writer.log({key: stats[key].item()}, step)
+
+class TrackingProgressBarWrapper(BaseProgressBar):
+    """Log to Wandb."""
+
+    def __init__(self, wrapped_bar, configs):
+        self.wrapped_bar = wrapped_bar
+        self.configs = configs
+        try:
+            from dp.tracking import Run
+        except ImportError:
+            "dp.tracking not found"
+        if configs.tracking_repo == None:
+            repo = 'aim://tracking-api.mlops.dp.tech:443'
+        else:
+            repo = configs.tracking_repo
+        self.writer = Run(repo=repo, experiment=configs.experiment_name)
+        if self.configs.run_id:
+            run_id = self.configs.run_id + '_' + str(unique_code())
+            self.writer.name = run_id
+        self.writer["hparams"] = configs
+        
+    def __iter__(self):
+        return iter(self.wrapped_bar)
+
+    def log(self, stats, tag=None, step=None):
+        """Log intermediate stats to tensorboard."""
+        self._log_to_tracking(stats, tag, step)
+        self.wrapped_bar.log(stats, tag=tag, step=step)
+
+    def print(self, stats, tag=None, step=None):
+        """Print end-of-epoch stats."""
+        self._log_to_tensorboard(stats, tag, step)
+        self.wrapped_bar.print(stats, tag=tag, step=step)
+
+    def update_config(self, config):
+        """Log latest configuration."""
+        # TODO add hparams to Tensorboard
+        self.wrapped_bar.update_config(config)
+
+    def _log_to_tracking(self, stats, tag=None, step=None):
+        writer = self.writer
+        
+        if writer is None:
+            return
+        if step is None:
+            step = stats["num_updates"]
+        for key in stats.keys() - {"num_updates"}:
+            if isinstance(stats[key], AverageMeter):
+                writer.log(stats[key].val, name=key, step=step)
+            elif isinstance(stats[key], Number):
+                writer.log(stats[key], name=key, step=step)
+            elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
+                writer.log(stats[key].item(), name=key, step=step)
