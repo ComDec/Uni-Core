@@ -164,6 +164,7 @@ def get_parser(desc, default_task='test'):
                         help='log progress every N batches (when progress bar is disabled)')
     parser.add_argument('--log-format', default=None, help='log format to use',
                         choices=['json', 'none', 'simple', 'tqdm', 'wandb'])
+    parser.add_argument('--tracking_repo', default=None, help='dp tracking repo')
     parser.add_argument('--experiment_name', help='name for experiments')
     parser.add_argument('--run_id', default=None, help='name for run')
     parser.add_argument('--tensorboard-logdir', metavar='DIR', default='',
