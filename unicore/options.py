@@ -163,7 +163,7 @@ def get_parser(desc, default_task='test'):
     parser.add_argument('--log-interval', type=int, default=1000, metavar='N',
                         help='log progress every N batches (when progress bar is disabled)')
     parser.add_argument('--log-format', default=None, help='log format to use',
-                        choices=['json', 'none', 'simple', 'tqdm', 'wandb'])
+                        choices=['json', 'none', 'simple', 'tqdm', 'wandb', 'tracking'])
     parser.add_argument('--tracking_repo', default=None, help='dp tracking repo')
     parser.add_argument('--experiment_name', help='name for experiments')
     parser.add_argument('--run_id', default=None, help='name for run')
