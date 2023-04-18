@@ -405,15 +405,18 @@ class WandbProgressBarWrapper(BaseProgressBar):
             import wandb
         except ImportError:
             "wandb not found, use pip install wandb"
-        self.writer = wandb.init(project=configs.experiment_name, config=configs, group=configs.group_id)
-        if self.configs.run_id:
-            self.writer.name = self.configs.run_id
+        if torch.distributed.get_rank() == 0:
+            self.writer = wandb.init(project=configs.experiment_name, config=configs, group=configs.group_id)
+            if self.configs.run_id:
+                self.writer.name = self.configs.run_id
+        else:
+            self.writer = None
 
     def __iter__(self):
         return iter(self.wrapped_bar)
 
     def log(self, stats, tag=None, step=None):
-        """Log intermediate stats to tensorboard."""
+        """Log intermediate stats to wandb."""
         self._log_to_wandb(stats, tag, step)
         self.wrapped_bar.log(stats, tag=tag, step=step)
 
@@ -442,7 +445,7 @@ class WandbProgressBarWrapper(BaseProgressBar):
                 writer.log({self.running_state + '_' + key: stats[key].item()}, step)
 
 class TrackingProgressBarWrapper(BaseProgressBar):
-    """Log to Wandb."""
+    """Log to dp tracking."""
 
     def __init__(self, wrapped_bar, configs):
         self.wrapped_bar = wrapped_bar
@@ -456,42 +459,41 @@ class TrackingProgressBarWrapper(BaseProgressBar):
             repo = 'aim://tracking-api.mlops.dp.tech:443'
         else:
             repo = configs.tracking_repo
-        self.writer = Run(repo=repo, experiment=configs.experiment_name)
-        # using tag as group, maybe context?
-        self.writer.add_tag(self.configs.group_id)
-        if self.configs.run_id:
-            self.writer.name = self.configs.run_id
-        self.writer["hparams"] = configs
+        if torch.distributed.get_rank() == 0:
+            self.writer = Run(repo=repo, experiment=configs.experiment_name)
+            if self.configs.run_id:
+                self.writer.name = self.configs.run_id
+            self.writer["hparams"] = vars(configs)
+        else:
+            self.writer = None
         
     def __iter__(self):
         return iter(self.wrapped_bar)
 
     def log(self, stats, tag=None, step=None):
-        """Log intermediate stats to tensorboard."""
+        """Log intermediate stats to tracking."""
         self._log_to_tracking(stats, tag, step)
         self.wrapped_bar.log(stats, tag=tag, step=step)
 
     def print(self, stats, tag=None, step=None):
         """Print end-of-epoch stats."""
-        self._log_to_tensorboard(stats, tag, step)
+        self._log_to_tracking(stats, tag, step)
         self.wrapped_bar.print(stats, tag=tag, step=step)
 
     def update_config(self, config):
         """Log latest configuration."""
-        # TODO add hparams to Tensorboard
         self.wrapped_bar.update_config(config)
 
     def _log_to_tracking(self, stats, tag=None, step=None):
         writer = self.writer
-        
         if writer is None:
             return
         if step is None:
             step = stats["num_updates"]
         for key in stats.keys() - {"num_updates"}:
             if isinstance(stats[key], AverageMeter):
-                writer.log(stats[key].val, name=self.running_state + '_' + key, step=step)
+                writer.track(stats[key].val, name=key, step=step, context={ "subset": self.configs.running_state })
             elif isinstance(stats[key], Number):
-                writer.log(stats[key], name=self.running_state + '_' + key, step=step)
+                writer.track(stats[key], name=key, step=step, context={ "subset": self.configs.running_state })
             elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
-                writer.log(stats[key].item(), name=self.running_state + '_' + key, step=step)
+                writer.track(stats[key].item(), name=key, step=step, context={ "subset": self.configs.running_state })
