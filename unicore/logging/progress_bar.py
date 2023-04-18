@@ -21,6 +21,7 @@ from typing import Optional
 import torch
 
 from .meters import AverageMeter, StopwatchMeter, TimeMeter
+from unicore.distributed import utils as distributed_utils
 
 import datetime
 import base64
@@ -405,7 +406,10 @@ class WandbProgressBarWrapper(BaseProgressBar):
             import wandb
         except ImportError:
             "wandb not found, use pip install wandb"
-        if torch.distributed.get_rank() == 0:
+            
+        world_size = 1 if configs.distributed_world_size == 1 else distributed_utils.get_data_parallel_world_size()
+        rank = 0 if world_size == 1 else distributed_utils.get_data_parallel_rank()
+        if rank == 0:
             self.writer = wandb.init(project=configs.experiment_name, config=configs, group=configs.group_id)
             if self.configs.run_id:
                 self.writer.name = self.configs.run_id
@@ -459,8 +463,11 @@ class TrackingProgressBarWrapper(BaseProgressBar):
             repo = 'aim://tracking-api.mlops.dp.tech:443'
         else:
             repo = configs.tracking_repo
-        if torch.distributed.get_rank() == 0:
-            self.writer = Run(repo=repo, experiment=configs.experiment_name)
+        
+        world_size = 1 if configs.distributed_world_size == 1 else distributed_utils.get_data_parallel_world_size()
+        rank = 0 if world_size == 1 else distributed_utils.get_data_parallel_rank()
+        if rank == 0:
+            self.writer = Run(repo=repo, experiment=configs.experiment_name, log_system_params=True)
             if self.configs.run_id:
                 self.writer.name = self.configs.run_id
             self.writer["hparams"] = vars(configs)
