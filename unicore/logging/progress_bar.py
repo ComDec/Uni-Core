@@ -440,13 +440,15 @@ class WandbProgressBarWrapper(BaseProgressBar):
             return
         if step is None:
             step = stats["num_updates"]
+        if tag is None:
+            tag = ''
         for key in stats.keys() - {"num_updates"}:
             if isinstance(stats[key], AverageMeter):
-                writer.log({self.running_state + '_' + key: stats[key].val}, step)
+                writer.log({self.running_state + tag + '_' + key: stats[key].val}, step)
             elif isinstance(stats[key], Number):
-                writer.log({self.running_state + '_' + key: stats[key]}, step)
+                writer.log({self.running_state + tag + '_' + key: stats[key]}, step)
             elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
-                writer.log({self.running_state + '_' + key: stats[key].item()}, step)
+                writer.log({self.running_state + tag + '_' + key: stats[key].item()}, step)
 
 class TrackingProgressBarWrapper(BaseProgressBar):
     """Log to dp tracking."""
@@ -497,10 +499,12 @@ class TrackingProgressBarWrapper(BaseProgressBar):
             return
         if step is None:
             step = stats["num_updates"]
+        if tag is None:
+            tag = ''
         for key in stats.keys() - {"num_updates"}:
             if isinstance(stats[key], AverageMeter):
-                writer.track(stats[key].val, name=key, step=step, context={ "subset": self.configs.running_state })
+                writer.track(stats[key].val, name=key, step=step, context={ "subset": self.configs.running_state + '_' + tag })
             elif isinstance(stats[key], Number):
-                writer.track(stats[key], name=key, step=step, context={ "subset": self.configs.running_state })
+                writer.track(stats[key], name=key, step=step, context={ "subset": self.configs.running_state + '_' + tag})
             elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
-                writer.track(stats[key].item(), name=key, step=step, context={ "subset": self.configs.running_state })
+                writer.track(stats[key].item(), name=key, step=step, context={ "subset": self.configs.running_state + '_' + tag})
