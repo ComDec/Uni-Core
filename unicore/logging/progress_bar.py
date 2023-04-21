@@ -444,11 +444,11 @@ class WandbProgressBarWrapper(BaseProgressBar):
             tag = ''
         for key in stats.keys() - {"num_updates"}:
             if isinstance(stats[key], AverageMeter):
-                writer.log({self.running_state + tag + '_' + key: stats[key].val}, step)
+                writer.log({self.running_state + '_' + tag + '_' + key: stats[key].val}, step)
             elif isinstance(stats[key], Number):
-                writer.log({self.running_state + tag + '_' + key: stats[key]}, step)
+                writer.log({self.running_state + '_' + tag + '_' + key: stats[key]}, step)
             elif torch.is_tensor(stats[key]) and stats[key].numel() == 1:
-                writer.log({self.running_state + tag + '_' + key: stats[key].item()}, step)
+                writer.log({self.running_state + '_' + tag + '_' + key: stats[key].item()}, step)
 
 class TrackingProgressBarWrapper(BaseProgressBar):
     """Log to dp tracking."""
